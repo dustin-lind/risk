@@ -1,6 +1,8 @@
 import os
 import random
-from collections import namedtuple
+from collections import namedtuple, deque
+import copy
+import heapdict
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -111,7 +113,17 @@ class Board(object):
         Returns:
             bool: True if the input path is valid
         '''
-
+        if len(path) == 1 or len(path) == 0:
+            return True
+        elif len(path) != len(set(path)):
+            return False
+        else:
+            for i in range(len(path)-1):
+                current_node = path[i]
+                neighbor_node = path[i+1]
+                if neighbor_node not in risk.definitions.territory_neighbors[current_node]:
+                    return False
+            return True
     
     def is_valid_attack_path(self, path):
         '''
@@ -130,7 +142,16 @@ class Board(object):
         Returns:
             bool: True if the path is an attack path
         '''
-
+        if self.is_valid_path(path):
+            if len(path) >= 2:
+                for i in range(1,len(path)):
+                    if self.owner(path[0]) == self.owner(path[i]):
+                        return False
+                return True
+            else:
+                return False
+        else:
+            return False
 
     def cost_of_attack_path(self, path):
         '''
@@ -143,6 +164,10 @@ class Board(object):
         Returns:
             bool: the number of enemy armies in the path
         '''
+        cost_of_attack = 0
+        for i in range(1,len(path)):
+            cost_of_attack += self.armies(path[i])
+        return cost_of_attack
 
 
     def shortest_path(self, source, target):
@@ -157,11 +182,34 @@ class Board(object):
         Args:
             source (int): a territory_id that is the source location
             target (int): a territory_id that is the target location
-
         Returns:
             [int]: a valid path between source and target that has minimum length; this path is guaranteed to exist
         '''
+        path_info = dict()
+        path_info[source] = [source]
+        queue = deque([])
+        queue.append(source)
+        visited_terrs = set()
+        visited_terrs.add(source)
 
+        while queue:
+            current_terr = queue.popleft()
+            if current_terr == target:
+                return path_info[current_terr]
+            for terr in list(risk.definitions.territory_neighbors[current_terr]):
+                if terr in visited_terrs:
+                    pass
+                else:
+                    temp_dict = copy.deepcopy(path_info[current_terr])
+                    temp_dict.append(terr)
+                    if terr in path_info:
+                        if len(temp_dict) < len(path_info[terr]):
+                            path_info[terr] = temp_dict
+                            queue.append(terr)
+                    else:
+                        path_info[terr] = temp_dict
+                        queue.append(terr)
+            visited_terrs.add(current_terr)
 
     def can_fortify(self, source, target):
         '''
@@ -176,7 +224,33 @@ class Board(object):
         Returns:
             bool: True if reinforcing the target from the source territory is a valid move
         '''
+        path_info = dict()
+        path_info[source] = [source]
+        queue = deque([])
+        queue.append(source)
+        visited_terrs = set()
+        visited_terrs.add(source)
 
+        while queue:
+            current_terr = queue.popleft()
+            if current_terr == target:
+                return True
+            for terr in list(risk.definitions.territory_neighbors[current_terr]):
+                if terr in visited_terrs \
+                        or self.owner(terr) != self.owner(source):
+                    pass 
+                else:
+                    temp_dict = copy.deepcopy(path_info[current_terr])
+                    temp_dict.append(terr)
+                    if terr in path_info:
+                        if len(temp_dict) < len(path_info[terr]):
+                            path_info[terr] = temp_dict
+                            queue.append(terr)
+                    else:
+                        path_info[terr] = temp_dict
+                        queue.append(terr)
+            visited_terrs.add(current_terr)
+        return False
 
     def cheapest_attack_path(self, source, target):
         '''
@@ -191,7 +265,36 @@ class Board(object):
         Returns:
             [int]: a list of territory_ids representing the valid attack path; if no path exists, then it returns None instead
         '''
+        if self.owner(source) == self.owner(target):
+            return None
 
+        path_info = dict()
+        path_info[source] = [source]
+        q = heapdict.heapdict()
+        q[source] = 0
+        visited_terrs = set()
+        visited_terrs.add(source)
+
+        while q:
+            current_terr, priority = q.peekitem()
+            q.pop(current_terr)
+            if current_terr == target:
+                return path_info[current_terr]
+            for terr in list(risk.definitions.territory_neighbors[current_terr]):
+                if terr in visited_terrs or self.owner(terr) == self.owner(source):
+                    pass
+                else:
+                    temp_dict = copy.deepcopy(path_info[current_terr])
+                    temp_dict.append(terr)
+                    path_priority = priority + self.armies(terr)
+                    if terr not in q:
+                        path_info[terr] = temp_dict
+                        q[terr] = path_priority
+                    elif path_priority < q[terr]:
+                        path_info[terr] = temp_dict
+                        q[terr] = path_priority
+            visited_terrs.add(current_terr)
+        return None
 
     def can_attack(self, source, target):
         '''
@@ -202,6 +305,10 @@ class Board(object):
         Returns:
             bool: True if a valid attack path exists between source and target; else False
         '''
+        if self.cheapest_attack_path(source, target):
+            return True
+        else:
+            return False
 
 
     # ======================= #
